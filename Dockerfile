@@ -7,27 +7,29 @@
 #EXPOSE 8080
 #ENTRYPOINT ["java", "-jar","demo.jar"]
 
-# Stage 1: Build the Spring Boot JAR
-FROM maven:3.9.1-eclipse-temurin-17 AS build
+# Stage 1: Build the app
+FROM gradle:8.3-jdk17 AS build
 WORKDIR /app
 
-# Copy only the pom.xml first for caching dependencies
-COPY pom.xml .
-RUN mvn dependency:go-offline -B
+# Copy Gradle files first to leverage cache
+COPY build.gradle settings.gradle ./
+COPY gradle ./gradle
 
-# Copy the source code and build
+# Fetch dependencies
+RUN gradle build --no-daemon || return 0
+
+# Copy the source code
 COPY src ./src
-RUN mvn clean package -DskipTests
+
+# Build the jar
+RUN gradle clean build -x test --no-daemon
 
 # Stage 2: Run the app
 FROM eclipse-temurin:17-alpine
 WORKDIR /app
 
-# Copy the JAR from the build stage
-COPY --from=build /app/target/*.jar app.jar
+# Copy the jar from build stage
+COPY --from=build /app/build/libs/*.jar app.jar
 
-# Expose the port your Spring Boot app runs on
 EXPOSE 8080
-
-# Run the JAR
 ENTRYPOINT ["java", "-jar", "app.jar"]
